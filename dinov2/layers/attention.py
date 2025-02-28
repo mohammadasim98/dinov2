@@ -13,7 +13,8 @@ import warnings
 
 from torch import Tensor
 from torch import nn
-
+from einops import rearrange
+from flash_attn import flash_attn_func
 
 logger = logging.getLogger("dinov2")
 
@@ -81,8 +82,12 @@ class MemEffAttention(Attention):
 
         q, k, v = unbind(qkv, 2)
 
-        x = memory_efficient_attention(q, k, v, attn_bias=attn_bias)
-        x = x.reshape([B, N, C])
+        x = flash_attn_func(q, k, v)
+
+        x = rearrange(x, "b n h d -> b n (h d)").contiguous()
+
+        # x = memory_efficient_attention(q, k, v, attn_bias=attn_bias)
+        # x = x.reshape([B, N, C])
 
         x = self.proj(x)
         x = self.proj_drop(x)
