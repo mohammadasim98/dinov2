@@ -15,7 +15,7 @@ import warnings
 import torch
 from torch import nn, Tensor
 
-from .attention import Attention, MemEffAttention
+from .attention import Attention, FlashAttention
 from .drop_path import DropPath
 from .layer_scale import LayerScale
 from .mlp import Mlp
@@ -213,7 +213,7 @@ class NestedTensorBlock(Block):
         """
         x_list contains a list of tensors to nest together and run
         """
-        assert isinstance(self.attn, MemEffAttention)
+        assert isinstance(self.attn, FlashAttention)
 
         if self.training and self.sample_drop_ratio > 0.0:
 
