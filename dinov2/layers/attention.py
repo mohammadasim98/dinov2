@@ -70,7 +70,7 @@ class Attention(nn.Module):
         return x
 
 
-class MemEffAttention(Attention):
+class FlashAttention(Attention):
     def forward(self, x: Tensor, attn_bias=None) -> Tensor:
         if not XFORMERS_AVAILABLE:
             if attn_bias is not None:
