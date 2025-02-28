@@ -35,7 +35,7 @@ class SwiGLUFFN(nn.Module):
 
 
 
-class SwiGLUFFNFused(SwiGLU):
+class SwiGLUFFNFused(SwiGLUFFN):
     def __init__(
         self,
         in_features: int,
