@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch.utils.checkpoint
 from torch.nn.init import trunc_normal_
 
-from ..layers import Mlp, PatchEmbed, SwiGLUFFNFused, FlashAttention, NestedTensorBlock as Block
+from dinov2.layers import Mlp, PatchEmbed, SwiGLUFFNFused, FlashAttention, NestedTensorBlock as Block
 
 
 logger = logging.getLogger("dinov2")
@@ -337,49 +337,49 @@ def init_weights_vit_timm(module: nn.Module, name: str = ""):
             nn.init.zeros_(module.bias)
 
 
-def vit_small(patch_size=14, num_register_tokens=0, **kwargs):
+def vit_small(patch_size=16, num_register_tokens=0, **kwargs):
     model = DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=384,
         depth=12,
         num_heads=6,
         mlp_ratio=4,
-        block_fn=partial(Block, attn_class=FlashAttention),
+        block_fn=partial(Block, attn_class=MemEffAttention),
         num_register_tokens=num_register_tokens,
         **kwargs,
     )
     return model
 
 
-def vit_base(patch_size=14, num_register_tokens=0, **kwargs):
+def vit_base(patch_size=16, num_register_tokens=0, **kwargs):
     model = DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=768,
         depth=12,
         num_heads=12,
         mlp_ratio=4,
-        block_fn=partial(Block, attn_class=FlashAttention),
+        block_fn=partial(Block, attn_class=MemEffAttention),
         num_register_tokens=num_register_tokens,
         **kwargs,
     )
     return model
 
 
-def vit_large(patch_size=14, num_register_tokens=0, **kwargs):
+def vit_large(patch_size=16, num_register_tokens=0, **kwargs):
     model = DinoVisionTransformer(
         patch_size=patch_size,
         embed_dim=1024,
         depth=24,
         num_heads=16,
         mlp_ratio=4,
-        block_fn=partial(Block, attn_class=FlashAttention),
+        block_fn=partial(Block, attn_class=MemEffAttention),
         num_register_tokens=num_register_tokens,
         **kwargs,
     )
     return model
 
 
-def vit_giant2(patch_size=14, num_register_tokens=0, **kwargs):
+def vit_giant2(patch_size=16, num_register_tokens=0, **kwargs):
     """
     Close to ViT-giant, with embed-dim 1536 and 24 heads => embed-dim per head 64
     """
@@ -389,21 +389,8 @@ def vit_giant2(patch_size=14, num_register_tokens=0, **kwargs):
         depth=40,
         num_heads=24,
         mlp_ratio=4,
-        block_fn=partial(Block, attn_class=FlashAttention),
+        block_fn=partial(Block, attn_class=MemEffAttention),
         num_register_tokens=num_register_tokens,
         **kwargs,
     )
     return model
-
-
-ViT = {
-    "vits14": vit_small(),
-    "vitb14": vit_base(),
-    "vitl14": vit_large(),
-    "vitg14": vit_giant2(),
-    "vits14_reg": vit_small(num_register_tokens=4),
-    "vitb14_reg": vit_base(num_register_tokens=4),
-    "vitl14_reg": vit_large(num_register_tokens=4),
-    "vitg14_reg": vit_giant2(num_register_tokens=4)
-}
-

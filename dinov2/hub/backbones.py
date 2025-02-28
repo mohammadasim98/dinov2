@@ -154,3 +154,16 @@ def dinov2_vitg14_reg(*, pretrained: bool = True, weights: Union[Weights, str] =
         interpolate_offset=0.0,
         **kwargs,
     )
+
+
+
+ViT = {
+    "dinov2_vits14": dinov2_vits14,
+    "dinov2_vitb14": dinov2_vitb14,
+    "dinov2_vitl14": dinov2_vitl14,
+    "dinov2_vitg14": dinov2_vitg14,
+    "vits14_reg": dinov2_vits14_reg,
+    "vitb14_reg": dinov2_vitb14_reg,
+    "vitl14_reg": dinov2_vitl14_reg,
+    "vitg14_reg": dinov2_vitg14_reg,
+}
