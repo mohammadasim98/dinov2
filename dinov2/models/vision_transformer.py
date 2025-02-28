@@ -11,7 +11,7 @@ from functools import partial
 import math
 import logging
 from typing import Sequence, Tuple, Union, Callable
-
+from einops import rearrange
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
@@ -211,13 +211,27 @@ class DinoVisionTransformer(nn.Module):
         return torch.cat((class_pos_embed.unsqueeze(0), patch_pos_embed), dim=1).to(previous_dtype)
 
     def prepare_tokens_with_masks(self, x, masks=None):
-        B, nc, w, h = x.shape
+        B, v, nc, w, h = x.shape
+
+        x = rearrange(x, "b v c h w -> (b v) c h w")
+
         x = self.patch_embed(x)
         if masks is not None:
             x = torch.where(masks.unsqueeze(-1), self.mask_token.to(x.dtype).unsqueeze(0), x)
 
-        x = torch.cat((self.cls_token.expand(x.shape[0], -1, -1), x), dim=1)
-        x = x + self.interpolate_pos_encoding(x, w, h)
+        x_cat = torch.cat((self.cls_token.expand(x.shape[0], -1, -1), x), dim=1)
+        pos_enc_x = self.interpolate_pos_encoding(x_cat, w, h)
+
+        cls_tok = pos_enc_x[:, 0:1, ...]
+        pos_enc_x = rearrange(pos_enc_x[:, 1:, ...], "(b v) n c -> b (n v) c")
+        pos_enc_x = torch.cat((cls_tok, pos_enc_x), dim=1)
+
+        x = rearrange(x, "(b v) n c -> b (n v) c")
+        x_cat = torch.cat((self.cls_token.expand(x.shape[0], -1, -1), x), dim=1)
+
+
+        x = x + pos_enc_x
+        
 
         if self.register_tokens is not None:
             x = torch.cat(
