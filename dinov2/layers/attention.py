@@ -61,7 +61,7 @@ class FlashAttention(Attention):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads)
 
-        q, k, v = unbind(qkv, 2)
+        q, k, v = qkv.unbind(2)
 
         x = flash_attn_func(q, k, v)
 
