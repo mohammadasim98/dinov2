@@ -93,7 +93,7 @@ class DinoVisionTransformer(nn.Module):
         """
         super().__init__()
         norm_layer = partial(nn.LayerNorm, eps=1e-6)
-
+        self.img_size = img_size
         self.num_features = self.embed_dim = embed_dim  # num_features for consistency with other models
         self.num_tokens = 1
         self.n_blocks = depth
@@ -102,6 +102,12 @@ class DinoVisionTransformer(nn.Module):
         self.num_register_tokens = num_register_tokens
         self.interpolate_antialias = interpolate_antialias
         self.interpolate_offset = interpolate_offset
+        if type(self.img_size) == int:
+            self.img_size = (self.img_size, self.img_size)
+        self.patch_grid_size = (
+            self.img_size[0] // patch_size,
+            self.img_size[1] // patch_size,
+        )
 
         self.patch_embed = embed_layer(img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
@@ -188,20 +194,22 @@ class DinoVisionTransformer(nn.Module):
         dim = x.shape[-1]
         w0 = w // self.patch_size
         h0 = h // self.patch_size
-        M = int(math.sqrt(N))  # Recover the number of patches in each dimension
-        assert N == M * M
+        # M = int(math.sqrt(N))  # Recover the number of patches in each dimension
+
+        assert N == self.patch_grid_size[1] * self.patch_grid_size[0], f"Number of patches hp*wp {self.patch_grid_size} != {N}"
         kwargs = {}
         if self.interpolate_offset:
             # Historical kludge: add a small number to avoid floating point error in the interpolation, see https://github.com/facebookresearch/dino/issues/8
             # Note: still needed for backward-compatibility, the underlying operators are using both output size and scale factors
-            sx = float(w0 + self.interpolate_offset) / M
-            sy = float(h0 + self.interpolate_offset) / M
+            sx = float(w0 + self.interpolate_offset) / self.patch_grid_size[1]
+            sy = float(h0 + self.interpolate_offset) / self.patch_grid_size[0]
             kwargs["scale_factor"] = (sx, sy)
         else:
             # Simply specify an output size instead of a scale factor
             kwargs["size"] = (w0, h0)
+
         patch_pos_embed = nn.functional.interpolate(
-            patch_pos_embed.reshape(1, M, M, dim).permute(0, 3, 1, 2),
+            patch_pos_embed.reshape(1, self.patch_grid_size[0], self.patch_grid_size[1], dim).permute(0, 3, 1, 2),
             mode="bicubic",
             antialias=self.interpolate_antialias,
             **kwargs,
