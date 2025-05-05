@@ -9,7 +9,7 @@
 
 import logging
 import os
-from typing import Callable, List, Any, Tuple, Dict
+from typing import Callable, List, Any, Tuple, Dict, Optional
 import warnings
 
 import torch
@@ -23,6 +23,41 @@ from .mlp import Mlp
 
 logger = logging.getLogger("dinov2")
 
+
+class AdaLayerNormZero(nn.Module):
+    """
+    Adaptive layer norm zero (AdaLN-Zero).
+    """
+
+    def __init__(self, hidden_size: int, layer_norm=None):
+        super().__init__()
+        self.modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(hidden_size, 3 * hidden_size, bias=True),
+        )
+        if layer_norm is None:
+            self.norm = layer_norm(hidden_size, elementwise_affine=False, eps=1e-6)
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        # Zero-out:
+        nn.init.zeros_(self.modulation[-1].weight)
+        nn.init.zeros_(self.modulation[-1].bias)
+
+    def forward(
+        self, x: torch.Tensor, c: torch.Tensor, layer_norm=None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Forward pass of the AdaLN-Zero layer.
+        Args:
+            x: Input tensor of shape (B, N, C).
+            c: Conditioning tensor of shape (B, N, C).
+        """
+        shift, scale, gate = self.modulation(c).chunk(3, dim=-1)
+        if layer_norm is None:
+            return modulate(self.norm(x), shift, scale), gate
+        else:
+            return modulate(layer_norm(x), shift, scale), gate
 
 
 class Block(nn.Module):
@@ -42,6 +77,7 @@ class Block(nn.Module):
         norm_layer: Callable[..., nn.Module] = nn.LayerNorm,
         attn_class: Callable[..., nn.Module] = Attention,
         ffn_layer: Callable[..., nn.Module] = Mlp,
+        use_adaLN: bool=False
     ) -> None:
         super().__init__()
         # print(f"biases: qkv: {qkv_bias}, proj: {proj_bias}, ffn: {ffn_bias}")
@@ -70,32 +106,43 @@ class Block(nn.Module):
         self.drop_path2 = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
         self.sample_drop_ratio = drop_path
+        self.use_adaLN = use_adaLN
+        if use_adaLN:
+            self.adaLN_norm1 = AdaLayerNormZero(dim, self.norm1)
+            self.adaLN_norm2 = AdaLayerNormZero(dim, self.norm2)
+    def forward(self, x: Tensor, emb: Optional[Tensor]=None) -> Tensor:
+        # def attn_residual_func(x: Tensor) -> Tensor:
+        #     return self.ls1(self.attn(self.norm1(x)))
 
-    def forward(self, x: Tensor) -> Tensor:
-        def attn_residual_func(x: Tensor) -> Tensor:
-            return self.ls1(self.attn(self.norm1(x)))
+        # def ffn_residual_func(x: Tensor) -> Tensor:
+        #     return self.ls2(self.mlp(self.norm2(x)))
 
-        def ffn_residual_func(x: Tensor) -> Tensor:
-            return self.ls2(self.mlp(self.norm2(x)))
-
-        if self.training and self.sample_drop_ratio > 0.1:
-            # the overhead is compensated only for a drop path rate larger than 0.1
-            x = drop_add_residual_stochastic_depth(
-                x,
-                residual_func=attn_residual_func,
-                sample_drop_ratio=self.sample_drop_ratio,
-            )
-            x = drop_add_residual_stochastic_depth(
-                x,
-                residual_func=ffn_residual_func,
-                sample_drop_ratio=self.sample_drop_ratio,
-            )
-        elif self.training and self.sample_drop_ratio > 0.0:
-            x = x + self.drop_path1(attn_residual_func(x))
-            x = x + self.drop_path1(ffn_residual_func(x))  # FIXME: drop_path2
+        # if self.training and self.sample_drop_ratio > 0.1:
+        #     # the overhead is compensated only for a drop path rate larger than 0.1
+        #     x = drop_add_residual_stochastic_depth(
+        #         x,
+        #         residual_func=attn_residual_func,
+        #         sample_drop_ratio=self.sample_drop_ratio,
+        #     )
+        #     x = drop_add_residual_stochastic_depth(
+        #         x,
+        #         residual_func=ffn_residual_func,
+        #         sample_drop_ratio=self.sample_drop_ratio,
+        #     )
+        # elif self.training and self.sample_drop_ratio > 0.0:
+        #     x = x + self.drop_path1(attn_residual_func(x))
+        #     x = x + self.drop_path1(ffn_residual_func(x))  # FIXME: drop_path2
+        # else:
+            
+        if emb is not None:
+            x, gate_msa = self.adaLN_norm1(x, emb, self.norm1)
+            x = x +  gate_msa * self.ls1(self.attn(x))
+            x, gate_mlp = self.adaLN_norm2(x, emb, self.norm2)
+            x = x + gate_mlp * self.ls2(self.mlp(x))
         else:
-            x = x + attn_residual_func(x)
-            x = x + ffn_residual_func(x)
+            x = x + self.ls1(self.attn(self.norm1(x)))
+            x = x + self.ls2(self.mlp(self.norm2(x)))
+                
         return x
 
 

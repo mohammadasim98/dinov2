@@ -65,6 +65,7 @@ class DinoVisionTransformer(nn.Module):
         num_register_tokens=0,
         interpolate_antialias=False,
         interpolate_offset=0.1,
+        use_adaLN: bool=False
     ):
         """
         Args:
@@ -153,6 +154,7 @@ class DinoVisionTransformer(nn.Module):
                 act_layer=act_layer,
                 ffn_layer=ffn_layer,
                 init_values=init_values,
+                use_adaLN=use_adaLN
             )
             for i in range(depth)
         ]
@@ -172,7 +174,9 @@ class DinoVisionTransformer(nn.Module):
         self.head = nn.Identity()
 
         self.mask_token = nn.Parameter(torch.zeros(1, embed_dim))
-
+        if use_adaLN:
+            self.pose_mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        
         self.init_weights()
 
     def init_weights(self):
@@ -218,12 +222,14 @@ class DinoVisionTransformer(nn.Module):
         patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).view(1, -1, dim)
         return torch.cat((class_pos_embed.unsqueeze(0), patch_pos_embed), dim=1).to(previous_dtype)
 
-    def prepare_tokens_with_masks(self, x, masks=None):
+    def prepare_tokens_with_masks(self, x, pemb=None, masks=None):
 
         b, v, nc, w, h = x.shape
 
         x = rearrange(x, "b v c h w -> (b v) c h w")
-
+        if pemb is not None:
+            pemb = rearrange(pemb, "b v c h w -> b (h w v) c")
+        
         x = self.patch_embed(x)
         if masks is not None:
             x = torch.where(masks.unsqueeze(-1), self.mask_token.to(x.dtype).unsqueeze(0), x)
@@ -253,8 +259,11 @@ class DinoVisionTransformer(nn.Module):
                 ),
                 dim=1,
             )
+            if pemb is not None:
+                pemb = torch.concat([self.pose_mask_token.expand(b, self.register_tokens.shape[1]+1, -1), pemb], dim=1)
 
-        return x
+                
+        return x, pemb
 
     def forward_features_list(self, x_list, masks_list):
         x = [self.prepare_tokens_with_masks(x, masks) for x, masks in zip(x_list, masks_list)]
@@ -276,14 +285,14 @@ class DinoVisionTransformer(nn.Module):
             )
         return output
 
-    def forward_features(self, x, masks=None):
-        if isinstance(x, list):
-            return self.forward_features_list(x, masks)
+    def forward_features(self, x, masks=None, pemb=None):
+        # if isinstance(x, list):
+        #     return self.forward_features_list(x, masks)
 
-        x = self.prepare_tokens_with_masks(x, masks)
+        x, pemb = self.prepare_tokens_with_masks(x, masks=masks, pemb=pemb)
 
         for blk in self.blocks:
-            x = blk(x)
+            x = blk(x, emb=pemb)
 
         x_norm = self.norm(x)
         return {
