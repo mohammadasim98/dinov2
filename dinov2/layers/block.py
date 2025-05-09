@@ -22,7 +22,8 @@ from .mlp import Mlp
 
 
 logger = logging.getLogger("dinov2")
-
+def modulate(x: torch.Tensor, shift: torch.Tensor, scale: torch.Tensor):
+    return x * (1 + scale) + shift
 
 class AdaLayerNormZero(nn.Module):
     """

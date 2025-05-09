@@ -57,7 +57,7 @@ def _make_dinov2_model(
         url = _DINOV2_BASE_URL + f"/{model_base_name}/{model_full_name}_pretrain.pth"
         print(f"(DINOv2) Loading pretrained weights from {url}")
         state_dict = torch.hub.load_state_dict_from_url(url, map_location="cpu")
-        model.load_state_dict(state_dict, strict=True)
+        model.load_state_dict(state_dict, strict=False)
 
     return model
 
