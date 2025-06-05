@@ -174,6 +174,7 @@ class DinoVisionTransformer(nn.Module):
         self.head = nn.Identity()
 
         self.mask_token = nn.Parameter(torch.zeros(1, embed_dim))
+        self.use_adaLN = use_adaLN
         if use_adaLN:
             self.pose_mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         
@@ -259,7 +260,7 @@ class DinoVisionTransformer(nn.Module):
                 ),
                 dim=1,
             )
-            if pemb is not None:
+            if self.use_adaLN:
                 pemb = torch.concat([self.pose_mask_token.expand(b, self.register_tokens.shape[1]+1, -1), pemb], dim=1)
 
                 

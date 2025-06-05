@@ -38,7 +38,7 @@ class AdaLayerNormZero(nn.Module):
         )
         if layer_norm is None:
             self.norm = layer_norm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.initialize_weights()
+        # self.initialize_weights()
 
     def initialize_weights(self):
         # Zero-out:
@@ -135,7 +135,7 @@ class Block(nn.Module):
         #     x = x + self.drop_path1(ffn_residual_func(x))  # FIXME: drop_path2
         # else:
             
-        if emb is not None:
+        if self.use_adaLN:
             x, gate_msa = self.adaLN_norm1(x, emb, self.norm1)
             x = x +  gate_msa * self.ls1(self.attn(x))
             x, gate_mlp = self.adaLN_norm2(x, emb, self.norm2)
